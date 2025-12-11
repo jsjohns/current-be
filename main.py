@@ -23,6 +23,7 @@ LINEAR_API_KEY = os.environ.get("LINEAR_API_KEY")
 LINEAR_API_URL = "https://api.linear.app/graphql"
 LINEAR_PROJECT_ID = "fecbb569-44a0-4985-ab89-a564be22bc91"
 LINEAR_TEAM_ID = "cf213fca-23a7-49b8-99c6-f7d5fb436b87"
+LINEAR_TODO_STATE_ID = "6b5ac552-9d79-413c-9adc-3e50faffad41"
 
 
 from pydantic import field_validator, model_validator
@@ -131,6 +132,7 @@ special_instructions: {special_instructions or "null"}
         "input": {
             "teamId": LINEAR_TEAM_ID,
             "projectId": LINEAR_PROJECT_ID,
+            "stateId": LINEAR_TODO_STATE_ID,
             "title": title,
             "description": description,
             "priority": linear_priority,
