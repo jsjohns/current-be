@@ -26,17 +26,13 @@ LINEAR_TEAM_ID = "cf213fca-23a7-49b8-99c6-f7d5fb436b87"
 
 
 class OrderCreate(BaseModel):
-    id: str
-    address: str | None = None
-    city: str | None = None
-    state: str | None = None
-    code: str | None = None  # yardi_id
+    code: str  # yardi property code - used to look up address, city, state
     utilities: list[str]
     reason: str
-    priority: str  # "Normal" or "Urgent"
-    target_date: str | None = None
-    request_date: str | None = None
-    note: str | None = None
+    is_urgent: bool = False
+    requested_for: str | None = None
+    requested_on: str | None = None
+    special_instructions: str | None = None
 
 
 class OrderCreateResponse(BaseModel):
@@ -55,37 +51,48 @@ async def create_order(order: OrderCreate):
     if not LINEAR_API_KEY:
         raise HTTPException(status_code=500, detail="Server configuration error")
 
+    import uuid
+    from datetime import date
+
+    # Generate order ID
+    order_id = str(uuid.uuid4())
+
+    # TODO: Look up property by code to get address, city, state
+    # For now, use placeholder
+    address = None
+    city = None
+    state = None
+
     # Format utilities abbreviation (E, G, W, T)
     util_abbrev = "".join(u[0] for u in order.utilities)
 
     # Format title: "[$street, $city, $state] $reason ($utilities)"
-    if order.address:
-        title = f"[{order.address}, {order.city}, {order.state}] {order.reason} ({util_abbrev})"
+    if address:
+        title = f"[{address}, {city}, {state}] {order.reason} ({util_abbrev})"
     else:
-        title = f"[Unknown Property] {order.reason} ({util_abbrev})"
+        title = f"[{order.code}] {order.reason} ({util_abbrev})"
 
     # Format description with portal fields
-    from datetime import date
     today = date.today().isoformat()
-    requested_for = "ASAP" if order.priority == "Urgent" else (order.target_date or "N/A")
+    requested_for = "ASAP" if order.is_urgent else (order.requested_for or "N/A")
 
     description = f"""+++ **Portal Fields**
 
 ```
 type: Order
-id: {order.id}
-requested_on: {order.request_date or today}
-yardi_id: {order.code or "N/A"}
+id: {order_id}
+requested_on: {order.requested_on or today}
+yardi_id: {order.code}
 utilities: {", ".join(order.utilities)}
 reason: {order.reason}
 requested_for: {requested_for}
-special_instructions: {order.note or "N/A"}
+special_instructions: {order.special_instructions or "N/A"}
 ```
 
 +++"""
 
     # Map priority
-    linear_priority = 1 if order.priority == "Urgent" else 0
+    linear_priority = 1 if order.is_urgent else 0
 
     mutation = """
         mutation CreateIssue($input: IssueCreateInput!) {
@@ -110,8 +117,8 @@ special_instructions: {order.note or "N/A"}
         }
     }
 
-    if order.priority != "Urgent" and order.target_date:
-        variables["input"]["dueDate"] = order.target_date
+    if not order.is_urgent and order.requested_for:
+        variables["input"]["dueDate"] = order.requested_for
 
     async with httpx.AsyncClient() as client:
         response = await client.post(
