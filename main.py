@@ -93,7 +93,7 @@ async def create_order(order: OrderCreate):
         title = f"[{order.code}] {order.reason} ({util_abbrev})"
 
     # Format description with portal fields
-    requested_for_value = "ASAP" if order.is_urgent else order.requested_for
+    special_instructions = order.special_instructions.strip() if order.special_instructions else None
 
     description = f"""+++ **Portal Fields**
 
@@ -102,10 +102,11 @@ type: Order
 id: {order_id}
 requested_on: {order.requested_on}
 yardi_id: {order.code}
-utilities: {", ".join(order.utilities)}
+utilities: [{", ".join(order.utilities)}]
 reason: {order.reason}
-requested_for: {requested_for_value}
-special_instructions: {order.special_instructions or "N/A"}
+is_urgent: {str(order.is_urgent).lower()}
+requested_for: {order.requested_for or "null"}
+special_instructions: {special_instructions or "null"}
 ```
 
 +++"""
