@@ -25,17 +25,23 @@ LINEAR_PROJECT_ID = "fecbb569-44a0-4985-ab89-a564be22bc91"
 LINEAR_TEAM_ID = "cf213fca-23a7-49b8-99c6-f7d5fb436b87"
 
 
-class CreateIssueRequest(BaseModel):
-    title: str
-    description: str
-    priority: int = 0  # 0 = No Priority, 1 = Urgent, 2 = High, 3 = Medium, 4 = Low
-    due_date: str | None = None
+class OrderCreate(BaseModel):
+    id: str
+    address: str | None = None
+    city: str | None = None
+    state: str | None = None
+    code: str | None = None  # yardi_id
+    utilities: list[str]
+    reason: str
+    priority: str  # "Normal" or "Urgent"
+    target_date: str | None = None
+    request_date: str | None = None
+    note: str | None = None
 
 
-class CreateIssueResponse(BaseModel):
+class OrderCreateResponse(BaseModel):
     success: bool
     identifier: str | None = None
-    url: str | None = None
     error: str | None = None
 
 
@@ -44,10 +50,42 @@ def hello():
     return {"message": "hello"}
 
 
-@app.post("/linear/issues", response_model=CreateIssueResponse)
-async def create_linear_issue(req: CreateIssueRequest):
+@app.post("/orders", response_model=OrderCreateResponse)
+async def create_order(order: OrderCreate):
     if not LINEAR_API_KEY:
-        raise HTTPException(status_code=500, detail="LINEAR_API_KEY not configured")
+        raise HTTPException(status_code=500, detail="Server configuration error")
+
+    # Format utilities abbreviation (E, G, W, T)
+    util_abbrev = "".join(u[0] for u in order.utilities)
+
+    # Format title: "[$street, $city, $state] $reason ($utilities)"
+    if order.address:
+        title = f"[{order.address}, {order.city}, {order.state}] {order.reason} ({util_abbrev})"
+    else:
+        title = f"[Unknown Property] {order.reason} ({util_abbrev})"
+
+    # Format description with portal fields
+    from datetime import date
+    today = date.today().isoformat()
+    requested_for = "ASAP" if order.priority == "Urgent" else (order.target_date or "N/A")
+
+    description = f"""+++ **Portal Fields**
+
+```
+type: Order
+id: {order.id}
+requested_on: {order.request_date or today}
+yardi_id: {order.code or "N/A"}
+utilities: {", ".join(order.utilities)}
+reason: {order.reason}
+requested_for: {requested_for}
+special_instructions: {order.note or "N/A"}
+```
+
++++"""
+
+    # Map priority
+    linear_priority = 1 if order.priority == "Urgent" else 0
 
     mutation = """
         mutation CreateIssue($input: IssueCreateInput!) {
@@ -66,14 +104,14 @@ async def create_linear_issue(req: CreateIssueRequest):
         "input": {
             "teamId": LINEAR_TEAM_ID,
             "projectId": LINEAR_PROJECT_ID,
-            "title": req.title,
-            "description": req.description,
-            "priority": req.priority,
+            "title": title,
+            "description": description,
+            "priority": linear_priority,
         }
     }
 
-    if req.due_date:
-        variables["input"]["dueDate"] = req.due_date
+    if order.priority != "Urgent" and order.target_date:
+        variables["input"]["dueDate"] = order.target_date
 
     async with httpx.AsyncClient() as client:
         response = await client.post(
@@ -88,14 +126,13 @@ async def create_linear_issue(req: CreateIssueRequest):
     result = response.json()
 
     if "errors" in result:
-        return CreateIssueResponse(
+        return OrderCreateResponse(
             success=False,
             error=result["errors"][0].get("message", "Unknown error"),
         )
 
     issue = result.get("data", {}).get("issueCreate", {}).get("issue", {})
-    return CreateIssueResponse(
+    return OrderCreateResponse(
         success=True,
         identifier=issue.get("identifier"),
-        url=issue.get("url"),
     )
