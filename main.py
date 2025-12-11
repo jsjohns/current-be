@@ -25,14 +25,36 @@ LINEAR_PROJECT_ID = "fecbb569-44a0-4985-ab89-a564be22bc91"
 LINEAR_TEAM_ID = "cf213fca-23a7-49b8-99c6-f7d5fb436b87"
 
 
+from pydantic import field_validator, model_validator
+from typing import Literal
+
+VALID_UTILITIES = ["Electric", "Gas", "Water", "Sewer", "Trash"]
+Utility = Literal["Electric", "Gas", "Water", "Sewer", "Trash"]
+
+
 class OrderCreate(BaseModel):
-    code: str  # yardi property code - used to look up address, city, state
-    utilities: list[str]
+    code: str
+    utilities: list[Utility]
     reason: str
     is_urgent: bool = False
     requested_for: str | None = None
-    requested_on: str | None = None
+    requested_on: str
     special_instructions: str | None = None
+
+    @field_validator("utilities")
+    @classmethod
+    def utilities_non_empty(cls, v):
+        if not v:
+            raise ValueError("utilities must have at least one item")
+        return v
+
+    @model_validator(mode="after")
+    def check_requested_for(self):
+        if self.is_urgent and self.requested_for is not None:
+            raise ValueError("requested_for must be null when is_urgent is true")
+        if not self.is_urgent and self.requested_for is None:
+            raise ValueError("requested_for is required when is_urgent is false")
+        return self
 
 
 class OrderCreateResponse(BaseModel):
@@ -52,7 +74,6 @@ async def create_order(order: OrderCreate):
         raise HTTPException(status_code=500, detail="Server configuration error")
 
     import uuid
-    from datetime import date
 
     # Generate order ID
     order_id = str(uuid.uuid4())
@@ -72,19 +93,18 @@ async def create_order(order: OrderCreate):
         title = f"[{order.code}] {order.reason} ({util_abbrev})"
 
     # Format description with portal fields
-    today = date.today().isoformat()
-    requested_for = "ASAP" if order.is_urgent else (order.requested_for or "N/A")
+    requested_for_value = "ASAP" if order.is_urgent else order.requested_for
 
     description = f"""+++ **Portal Fields**
 
 ```
 type: Order
 id: {order_id}
-requested_on: {order.requested_on or today}
+requested_on: {order.requested_on}
 yardi_id: {order.code}
 utilities: {", ".join(order.utilities)}
 reason: {order.reason}
-requested_for: {requested_for}
+requested_for: {requested_for_value}
 special_instructions: {order.special_instructions or "N/A"}
 ```
 
