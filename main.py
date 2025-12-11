@@ -58,10 +58,9 @@ async def create_order(order: OrderCreate):
     order_id = str(uuid.uuid4())
 
     # TODO: Look up property by code to get address, city, state
-    # For now, use placeholder
-    address = None
-    city = None
-    state = None
+    address = "907 St. Mary's Street"
+    city = "Raleigh"
+    state = "NC"
 
     # Format utilities abbreviation (E, G, W, T)
     util_abbrev = "".join(u[0] for u in order.utilities)
