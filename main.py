@@ -111,6 +111,68 @@ class OrderCreateResponse(BaseModel):
     error: str | None = None
 
 
+class OrderResponse(BaseModel):
+    id: str
+    reason: str
+    yardi_id: str
+    street: str | None
+    state: str | None
+    utilities: list[str]
+    requested_on: str | None
+    requested_for: str | None
+    special_instructions: str | None
+    status: str
+    completed_on: str | None
+
+
+def parse_utilities(utilities_str: str) -> list[str]:
+    """Parse utilities from '[ELECTRIC, GAS]' format to list"""
+    if not utilities_str:
+        return []
+    cleaned = utilities_str.strip("[]")
+    if not cleaned:
+        return []
+    return [u.strip() for u in cleaned.split(",")]
+
+
+@app.get("/orders", response_model=list[OrderResponse])
+def get_orders():
+    with psycopg2.connect(DATABASE_URL) as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT
+                    o.data->>'id' as id,
+                    o.data->>'reason' as reason,
+                    o.data->>'yardi_id' as yardi_id,
+                    p.address__addr1 as street,
+                    p.address__state as state,
+                    o.data->>'utilities' as utilities,
+                    o.data->>'requested_on' as requested_on,
+                    o.data->>'requested_for' as requested_for,
+                    o.data->>'special_instructions' as special_instructions
+                FROM portal."order" o
+                LEFT JOIN propify.property p ON o.data->>'yardi_id' = p.foreign_db_code
+            """)
+            rows = cur.fetchall()
+
+    orders = []
+    for row in rows:
+        orders.append(OrderResponse(
+            id=row[0],
+            reason=row[1],
+            yardi_id=row[2],
+            street=row[3],
+            state=row[4],
+            utilities=parse_utilities(row[5]),
+            requested_on=row[6],
+            requested_for=row[7] if row[7] != "null" else None,
+            special_instructions=row[8] if row[8] != "null" else None,
+            status="READY",
+            completed_on=None,
+        ))
+    return orders
+
+
 @app.get("/hello")
 def hello():
     return {"message": "hello"}
